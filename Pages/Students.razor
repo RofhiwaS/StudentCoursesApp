@@ -1,0 +1,189 @@
+@page "/students"
+@using StudentCoursesApp.Data
+@using StudentCoursesApp.Models
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext DbContext
+
+<PageTitle>Students</PageTitle>
+
+<h3>Student Management</h3>
+
+<div class="mb-3">
+    <input @bind="newStudentName" placeholder="Enter student name" class="form-control" style="max-width: 300px; display: inline-block;" />
+    <button @onclick="AddStudent" class="btn btn-primary">Add Student</button>
+</div>
+
+@if (students == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Number of Courses</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var student in students)
+            {
+                <tr>
+                    <td>@student.Name</td>
+                    <td>@student.Enrollments.Count</td>
+                    <td>
+                        <button @onclick="() => ShowEnrollModal(student.Id)" class="btn btn-success btn-sm me-2">Enroll</button>
+                        <button @onclick="() => DeleteStudent(student.Id)" class="btn btn-danger btn-sm">Delete</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@if (showEnrollmentModal)
+{
+    <div class="modal show d-block" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Enroll Student</h5>
+                    <button type="button" class="btn-close" @onclick="CloseEnrollModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Select Course:</label>
+                        <select @bind="selectedCourseId" class="form-select">
+                            <option value="0">-- Select Course --</option>
+                            @foreach (var course in availableCourses)
+                            {
+                                <option value="@course.Id">@course.Title</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Grade:</label>
+                        <select @bind="selectedGrade" class="form-select">
+                            <option value="">-- Select Grade --</option>
+                            <option value="A">A</option>
+                            <option value="B">B</option>
+                            <option value="C">C</option>
+                            <option value="D">D</option>
+                            <option value="F">F</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseEnrollModal">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="EnrollStudent">Enroll</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop show"></div>
+}
+
+@code {
+    private string newStudentName = string.Empty;
+    private List<Student>? students;
+    private List<Course> availableCourses = new();
+    
+    private bool showEnrollmentModal = false;
+    private int selectedStudentId = 0;
+    private int selectedCourseId = 0;
+    private string selectedGrade = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStudents();
+        await LoadCourses();
+    }
+
+    private async Task LoadStudents()
+    {
+        students = await DbContext.Students
+            .Include(s => s.Enrollments)
+            .ToListAsync();
+    }
+
+    private async Task LoadCourses()
+    {
+        availableCourses = await DbContext.Courses.ToListAsync();
+    }
+
+    private async Task AddStudent()
+    {
+        if (!string.IsNullOrWhiteSpace(newStudentName))
+        {
+            var student = new Student { Name = newStudentName };
+            DbContext.Students.Add(student);
+            await DbContext.SaveChangesAsync();
+            
+            newStudentName = string.Empty;
+            await LoadStudents();
+        }
+    }
+
+    private void ShowEnrollModal(int studentId)
+    {
+        selectedStudentId = studentId;
+        selectedCourseId = 0;
+        selectedGrade = string.Empty;
+        showEnrollmentModal = true;
+    }
+
+    private void CloseEnrollModal()
+    {
+        showEnrollmentModal = false;
+        selectedStudentId = 0;
+        selectedCourseId = 0;
+        selectedGrade = string.Empty;
+    }
+
+    private async Task EnrollStudent()
+    {
+        if (selectedCourseId > 0 && !string.IsNullOrWhiteSpace(selectedGrade))
+        {
+            // Check if already enrolled
+            var existingEnrollment = await DbContext.Enrollments
+                .FirstOrDefaultAsync(e => e.StudentId == selectedStudentId && e.CourseId == selectedCourseId);
+
+            if (existingEnrollment != null)
+            {
+                // Update grade if already enrolled
+                existingEnrollment.Grade = selectedGrade;
+            }
+            else
+            {
+                // Create new enrollment
+                var enrollment = new Enrollment
+                {
+                    StudentId = selectedStudentId,
+                    CourseId = selectedCourseId,
+                    Grade = selectedGrade
+                };
+                DbContext.Enrollments.Add(enrollment);
+            }
+
+            await DbContext.SaveChangesAsync();
+            await LoadStudents();
+            CloseEnrollModal();
+        }
+    }
+
+    private async Task DeleteStudent(int id)
+    {
+        var student = await DbContext.Students
+            .Include(s => s.Enrollments)
+            .FirstOrDefaultAsync(s => s.Id == id);
+        
+        if (student != null)
+        {
+            DbContext.Students.Remove(student);
+            await DbContext.SaveChangesAsync();
+            await LoadStudents();
+        }
+    }
+}

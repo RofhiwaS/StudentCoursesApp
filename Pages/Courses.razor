@@ -1,0 +1,90 @@
+@page "/courses"
+@using StudentCoursesApp.Data
+@using StudentCoursesApp.Models
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext DbContext
+
+<PageTitle>Courses</PageTitle>
+
+<h3>Courses with Enrolled Students</h3>
+
+@if (courses == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    @foreach (var course in courses)
+    {
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5>
+                    @course.Title
+                    @if (course.Enrollments.Any())
+                    {
+                        var avg = CalculateAverageGrade(course.Enrollments);
+                        <span class="badge bg-info">Avg: @avg.ToString("F2")</span>
+                    }
+                </h5>
+            </div>
+            <div class="card-body">
+                @if (course.Enrollments.Any())
+                {
+                    <ul>
+                        @foreach (var enrollment in course.Enrollments)
+                        {
+                            <li>@enrollment.Student.Name (@enrollment.Grade)</li>
+                        }
+                    </ul>
+                }
+                else
+                {
+                    <p class="text-muted">No students enrolled</p>
+                }
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<Course>? courses;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCourses();
+    }
+
+    private async Task LoadCourses()
+    {
+        courses = await DbContext.Courses
+            .Include(c => c.Enrollments)
+            .ThenInclude(e => e.Student)
+            .ToListAsync();
+    }
+
+
+    private double CalculateAverageGrade(List<Enrollment> enrollments)
+    {
+        if (!enrollments.Any()) return 0;
+
+        var total = 0.0;
+        var count = 0;
+
+        foreach (var enrollment in enrollments)
+        {
+            var gradeValue = enrollment.Grade.ToUpper() switch
+            {
+                "A" => 4.0,
+                "B" => 3.0,
+                "C" => 2.0,
+                "D" => 1.0,
+                "F" => 0.0,
+                _ => 0.0
+            };
+            total += gradeValue;
+            count++;
+        }
+
+        return count > 0 ? total / count : 0;
+    }
+}
